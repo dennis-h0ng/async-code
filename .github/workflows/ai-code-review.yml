@@ -2,18 +2,37 @@ name: AI Code Review
 
 on:
   pull_request:
-    types: [opened, synchronize, reopened]
-  issue_comment:
-    types: [created]
+    types: [opened, synchronize, ready_for_review, reopened]
 
 jobs:
-  review:
+  ai-review:
+    # Skip draft PRs
+    if: github.event.pull_request.draft == false
     runs-on: ubuntu-latest
     permissions:
       contents: read
       pull-requests: write
-      issues: write
+      issues: read
+      id-token: write
+
     steps:
-      - uses: anthropics/claude-code-action@v1
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: AI Code Review
+        uses: anthropics/claude-code-action@v1
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          REPO_FULL_NAME: ${{ github.repository }}
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          prompt_file: .github/prompts/code-review.md
+          # Allow Claude to post inline review comments via gh CLI
+          allowed_tools: |
+            View
+            GlobTool
+            GrepTool
+            Bash(gh pr diff:*)
+            Bash(gh api:*)
