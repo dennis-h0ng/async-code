@@ -1,0 +1,64 @@
+name: Claude Assistant
+
+on:
+  issue_comment:
+    types: [created]
+  pull_request_review_comment:
+    types: [created]
+  pull_request_review:
+    types: [submitted]
+
+jobs:
+  claude-assist:
+    # Respond to @claude mentions in comments
+    if: |
+      (github.event_name == 'issue_comment' && contains(github.event.comment.body, '@claude')) ||
+      (github.event_name == 'pull_request_review_comment' && contains(github.event.comment.body, '@claude')) ||
+      (github.event_name == 'pull_request_review' && contains(github.event.review.body, '@claude'))
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: write
+      id-token: write
+      actions: read
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          # Checkout the PR branch for making commits
+          ref: ${{ github.event.pull_request.head.ref || github.head_ref }}
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Configure Git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Claude Assistant
+        uses: anthropics/claude-code-action@v1
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number || github.event.issue.number }}
+          REPO_FULL_NAME: ${{ github.repository }}
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          prompt_file: .github/prompts/assistant.md
+          # Enable code modifications for auto-commit fixes
+          allowed_tools: |
+            View
+            GlobTool
+            GrepTool
+            Edit
+            Write
+            Bash(git diff:*)
+            Bash(git status:*)
+            Bash(git add:*)
+            Bash(git commit:*)
+            Bash(git push:*)
+            Bash(gh pr:*)
+            Bash(gh api:*)
+          # Allow Claude to read CI results
+          additional_permissions: |
+            actions: read
